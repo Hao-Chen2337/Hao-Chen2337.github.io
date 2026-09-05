@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>llama.cpp × SpaceMiT K3 调研</title>
+<style>
+  :root {
+    --bg:#f7fbff; --card:#fff; --text:#0f172a; --muted:#475569;
+    --accent:#0e7490; --accent2:#8b5cf6; --border:#e2e8f0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#0f1115; --card:#171a21; --text:#f3f4f6; --muted:#9ca3af;
+      --accent:#22d3ee; --accent2:#a78bfa; --border:#272b33;
+    }
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--bg); color:var(--text); line-height:1.7;
+    min-height:100vh; padding:48px 24px;
+  }
+  .wrap { max-width:980px; margin:0 auto; }
+  .back { font-size:13px; margin-bottom:20px; }
+  .back a { color:var(--muted); text-decoration:none; }
+  .back a:hover { color:var(--accent); }
+  h1 { font-size:30px; margin-bottom:6px;
+    background:linear-gradient(90deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .sub { color:var(--muted); margin-bottom:28px; font-size:14px; }
+  h2 { font-size:20px; margin:28px 0 12px; color:var(--accent); }
+  .overview { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px 20px; margin:16px 0 4px; }
+  .overview p { font-size:14px; margin-bottom:8px; }
+  .overview .meta { font-size:12px; color:var(--muted); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; }
+  .card {
+    display:block; text-decoration:none; color:var(--text); background:var(--card);
+    border:1px solid var(--border); border-radius:14px; padding:16px 18px;
+    transition:transform .15s ease, box-shadow .15s ease;
+  }
+  .card:hover { transform:translateY(-3px); box-shadow:0 8px 24px rgba(14,116,144,.15); }
+  .card .t { font-weight:700; font-size:16px; margin-bottom:4px; }
+  .card .d { font-size:13px; color:var(--muted); }
+  .badge {
+    display:inline-block; font-size:11px; padding:2px 8px; border-radius:999px;
+    background:rgba(14,116,144,.12); color:var(--accent); margin-right:6px;
+  }
+  footer { margin-top:40px; color:var(--muted); font-size:12px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="back"><a href="../index.html">← 个人主页</a></div>
+    <h1>llama.cpp × SpaceMiT K3</h1>
+    <p class="sub">RISC-V AI 核加速：IME 后端移植、热点剖析、性能优化的调研与汇报（2026-08）</p>
+
+    <div class="overview">
+      <p>SpaceMiT K3 是一颗 RISC-V 芯片：8 个 X100 通用核（256-bit 向量）+ 8 个 A100 AI 核（1024-bit 向量）。本调研把 llama.cpp 的 GEMM 迁移到 AI 核的 IME 加速器上，量化实测收益，并用 perf/形状流剖析性能瓶颈。三份 deck 依次讲：实测结果 → 热点分析 → 正确性与 TCM。</p>
+      <p class="meta">硬件：SpaceMiT K3（Bianbu 4.0）· 工具：llama-bench / perf / 自建形状流抓取 · 覆盖 13 个模型、6 种构建组合</p>
+    </div>
+
+    <h2>汇报 Deck</h2>
+    <div class="grid">
+      <a class="card" href="part1.html">
+        <span class="badge">Part 1</span>
+        <div class="t">模型实测</div>
+        <div class="d">IME 加速效果：pp 反超官方、tg 差距、13 模型基准</div>
+      </a>
+      <a class="card" href="part2.html">
+        <span class="badge">Part 2</span>
+        <div class="t">热点分析</div>
+        <div class="d">GEMM 热点 54-89%、IPC、带宽墙、perf 剖析</div>
+      </a>
+      <a class="card" href="part3.html">
+        <span class="badge">Part 3</span>
+        <div class="t">正确性 · TCM</div>
+        <div class="d">量化误差、TCM 线程亲和性崩溃与修复</div>
+      </a>
+    </div>
+
+    <footer>deck 数据：真实推理形状流 + 基准复测 · 离线可跑（本地 reveal/katex）</footer>
+  </div>
+</body>
+</html>

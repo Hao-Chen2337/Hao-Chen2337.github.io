@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Part 2 · 热点分析 —— 旅程的体检报告</title>
+<link rel="stylesheet" href="reveal/reveal.css">
+<link rel="stylesheet" href="reveal/theme/black.css">
+<link rel="stylesheet" href="assets/deck.css">
+<link rel="stylesheet" href="assets/katex/katex.min.css">
+<style>
+/* Part 2 局部对齐微调：图例居中 + 微架构表数值列居中（不碰共享样式与数据逻辑） */
+#hslegend { justify-content:center; }
+#uatab th:nth-child(n+3):nth-child(-n+5),
+#uatab td:nth-child(n+3):nth-child(-n+5) { text-align:center; }
+</style>
+</head>
+<body>
+<div class="reveal"><div class="slides">
+
+<section>
+  <h1>Part 2 · 热点分析</h1>
+</section>
+
+<section>
+  <h2>本 Part 目录</h2>
+  <table class="explain">
+    <tr><th>页</th><th>内容</th></tr>
+    <tr><td>P2-1</td><td>13 模型 IME-GEMM 占比（spacemit 构建）</td></tr>
+    <tr><td>P2-2</td><td>单模型热点构成 + sp vs plain 加速比</td></tr>
+    <tr><td>P2-3</td><td>微架构 / 瓶颈结论</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>P2-1 · 13 模型 IME-GEMM 占比（spacemit 构建）</h2>
+  <p class="small center" style="margin:.1em 0 .3em;">IME-GEMM = 跑在 SpaceMiT IME（AI 矩阵加速指令）上的矩阵乘内核——就是调用链终点那批 <code>gemm_kernel_i8i8</code> 等，这里统计它们在 perf 采样里占多少。</p>
+  <div style="text-align:center;margin:.3em 0;">
+    <button class="buildbtn on" data-c="x100" onclick="showGemm('x100')">通用核 X100</button>
+    <button class="buildbtn" data-c="a100" onclick="showGemm('a100')">AI核 A100</button>
+  </div>
+  <div id="gemmbox"></div>
+  <p class="note" id="gemmnote">数据: <code>bash/profile_result.txt</code>（spacemit 构建, 每模型 1M 采样, args <code>-t 2 -p 128 -n 16</code>, 以 pp 为主）。GEMM 桶 = <code>gemm_kernel_i8i8</code> 与 IME 内环符号（BLK_LOOP / _K_LPST / K64_ / INNER_ / BLK_LPST / END）。</p>
+</section>
+
+<section>
+  <h2>P2-2 · 单模型热点构成</h2>
+  <div class="pills" id="hsbuild"></div>
+  <div class="pills" id="hscluster"></div>
+  <div class="pills" id="hsmodel"></div>
+  <div class="stackwrap">
+    <div class="stackbar2" id="hsbar"></div>
+    <div class="legend" id="hslegend"></div>
+  </div>
+  <div class="hstat" id="hsstat"></div>
+  <div class="panel" style="margin-top:.4em;"><div class="pt"><b>sp vs plain 加速比（AI 核 pp）</b></div>
+    <div id="speedbox"></div>
+    <p class="tiny">加速比 = sp / plain（norep）在 AI 核的 pp 比值，13 模型量级 50-100 倍（plain 构建 AI 核 pp 仅 0.3-8 t/s）。</p>
+  </div>
+</section>
+
+<section>
+  <h2>P2-3 · 微架构 / 瓶颈结论</h2>
+  <table class="explain" id="uatab">
+    <tr><th>构建</th><th>核簇</th><th>IPC</th><th>frontend stall</th><th>backend stall</th><th>热点</th></tr>
+  </table>
+  <div class="panels" style="margin-top:.5em;">
+    <div class="panel"><div class="pt"><b>① plain × AI核</b></div>
+      <p class="tiny">IPC 0.17、backend stall 88%、vec_dot 热点 98.5%：通用 RVV 内核在 1024-bit AI 核上既用不满向量位宽、又被单点积的内存延迟拖住（空等数据）→ 比 sp 慢 50-100x。plain 的 MUL_MAT 走 type×op 查表选通用 vec_dot，spacemit trait 没接管。</p></div>
+    <div class="panel"><div class="pt"><b>② plain × 通用核</b></div>
+      <p class="tiny">IPC ~1.0 但 frontend stall ~70%（表 69.7）、backend 仅 ~23%：取指跟不上执行（icache / 取指带宽），执行单元在<em>等指令</em>——与 AI 核「等数据」性质完全不同。</p></div>
+    <div class="panel"><div class="pt"><b>③ spacemit：瓶颈在搬运不在乘加</b></div>
+      <p class="tiny">两核簇 IPC 都只有 ~0.30、backend stall 76-78%（数据供给不足）：IME 计算单元大量空闲等数据。GEMM 占 54-89% 说明 pp 计算确实集中在 IME，但瓶颈在<em>喂数据</em>的 DRAM/L2 链路，不在乘加本身。</p></div>
+    <div class="panel"><div class="pt"><b>④ tg：DRAM 带宽墙</b></div>
+      <p class="tiny"><span class="math" data-math="\text{带宽}=\text{tg}\times\text{模型大小}"></span>：gemma-3-4b 7.0×2.48GB=17.5 GB/s；q1.5b-q4_k 18.8×1.12GB=21.0；trendyol-7b 4.7×4.72GB=22.2。10 模型反推 17.5-25.5 GB/s，多数 19-22。tg 每步只算 1 个 token，激活读完即弃 → 每次要把完整权重读一遍；perf 实测 vec_dot 吞吐封顶 ~20 GB/s → <em>带宽墙是硬件限制</em>。</p></div>
+  </div>
+</section>
+
+</div></div>
+
+<script src="deck_data.js"></script>
+<script src="reveal/reveal.js"></script>
+<script src="assets/katex/katex.min.js"></script>
+<script src="assets/deck.js"></script>
+<script>
+initDeck({ part: 2 });
+var D = window.DECK_DATA;
+function fmt(x){ return Math.round(x*10)/10; }
+function pct(x){ return (Math.round(x*10)/10)+'%'; }
+
+/* P2-1 IME-GEMM 占比 */
+function showGemm(c){
+  var btns = document.querySelectorAll('[data-c]');
+  for (var j=0;j<btns.length;j++) btns[j].classList.toggle('on', btns[j].getAttribute('data-c')===c);
+  var rows = [];
+  for (var i=0;i<D.model_order.length;i++){
+    var m = D.model_order[i];
+    var g = (D.profile_models.spacemit[m][c].buckets.gemm||0);
+    rows.push({m:m, g:g});
+  }
+  rows.sort(function(a,b2){ return b2.g-a.g; });
+  var max = rows[0].g, html = '';
+  for (var i=0;i<rows.length;i++){
+    var r = rows[i];
+    html += '<div class="hb"><div class="l">'+r.m+'</div><div class="track"><div class="fill" style="width:'+(r.g/max*100)+'%;background:#34c98f"></div></div><div class="v">'+pct(r.g)+'</div></div>';
+  }
+  document.getElementById('gemmbox').innerHTML = html;
+  document.getElementById('gemmnote').textContent = '数据: bash/profile_result.txt (spacemit 构建, ' + (c==='x100'?'通用核 X100':'AI核 A100') + ', 每模型 1M 采样, args -t 2 -p 128 -n 16, 以 pp 为主)。GEMM 桶 = gemm_kernel_i8i8 与 IME 内环符号 (BLK_LOOP/_K_LPST/K64_/INNER_/BLK_LPST/END)。';
+}
+
+/* P2-2 单模型热点构成 */
+var HS_BUILDS = [['spacemit','sp 构建'],['plain-repack','rep 构建'],['plain-norepack','norep 构建']];
+var HS_CLUSTERS = [['x100','通用核 X100'],['a100','AI核 A100']];
+var HS_STATE = {build:'spacemit', cluster:'x100', model:'Q3-0.6B'};
+var BUCKET_META = {
+  gemm:{c:'#14b8a6', l:'GEMM(IME)'}, vec_dot:{c:'#a855f7', l:'vec_dot(通用)'},
+  attn:{c:'#5a9cf8', l:'flash_attn'}, ops:{c:'#e3a63a', l:'ops(归一化等)'},
+  repack:{c:'#ec4899', l:'repack'}, thread:{c:'#94a3b8', l:'线程同步'},
+  memcpy:{c:'#f87171', l:'memcpy'}, misc:{c:'#7a8595', l:'其它'}
+};
+function renderHSPills(){
+  var hb = '', hc = '', hm = '';
+  for (var i=0;i<HS_BUILDS.length;i++){
+    var b = HS_BUILDS[i];
+    hb += '<button class="pill'+(b[0]===HS_STATE.build?' on':'')+'" onclick="setHS(\'build\',\''+b[0]+'\')">'+b[1]+'</button>';
+  }
+  for (var i=0;i<HS_CLUSTERS.length;i++){
+    var c = HS_CLUSTERS[i];
+    hc += '<button class="pill'+(c[0]===HS_STATE.cluster?' on':'')+'" onclick="setHS(\'cluster\',\''+c[0]+'\')">'+c[1]+'</button>';
+  }
+  for (var i=0;i<D.model_order.length;i++){
+    var m = D.model_order[i];
+    hm += '<button class="pill'+(m===HS_STATE.model?' on':'')+'" onclick="setHS(\'model\',\''+m+'\')">'+m+'</button>';
+  }
+  document.getElementById('hsbuild').innerHTML = hb;
+  document.getElementById('hscluster').innerHTML = hc;
+  document.getElementById('hsmodel').innerHTML = hm;
+  renderHS();
+}
+function setHS(k, v){ HS_STATE[k] = v; renderHSPills(); }
+function renderHS(){
+  var pm = D.profile_models[HS_STATE.build][HS_STATE.model][HS_STATE.cluster];
+  var buckets = pm.buckets;
+  var order = Object.keys(buckets).sort(function(a,b2){ return buckets[b2]-buckets[a]; });
+  var seg = '', leg = '';
+  for (var i=0;i<order.length;i++){
+    var k = order[i], v = buckets[k], meta = BUCKET_META[k]||{c:'#7a8595', l:k};
+    seg += '<div class="seg" style="width:'+v+'%;background:'+meta.c+'">'+meta.l.split('(')[0]+' '+Math.round(v)+'</div>';
+    leg += '<span><span class="sw" style="background:'+meta.c+'"></span>'+meta.l+'</span>';
+  }
+  document.getElementById('hsbar').innerHTML = seg;
+  document.getElementById('hslegend').innerHTML = leg;
+  var top = pm.top && pm.top[0] ? pm.top[0].sym+' '+Math.round(pm.top[0].pct)+'%' : '-';
+  document.getElementById('hsstat').innerHTML =
+    '<span class="hs">IPC <b>'+pm.ipc+'</b></span>'
+    + '<span class="hs">backend stall <b>'+pm.backend+'%</b></span>'
+    + '<span class="hs">frontend stall <b>'+(pm.frontend||0)+'%</b></span>'
+    + '<span class="hs">top <b>'+top+'</b></span>';
+}
+
+/* 新增：sp vs plain 加速比条图（AI 核 pp，派生数据） */
+function renderSpeedup(){
+  var rows = [];
+  for (var i=0;i<D.model_order.length;i++){
+    var m = D.model_order[i];
+    var sp = D.models[m]['spacemit']['a100'].pp;
+    var pl = D.models[m]['plain-norepack']['a100'].pp;
+    if (pl <= 0) continue;
+    rows.push({m:m, r:sp/pl});
+  }
+  rows.sort(function(a,b2){ return b2.r-a.r; });
+  var maxr = rows[0].r, html = '';
+  for (var i=0;i<rows.length;i++){
+    var w = Math.min(100, rows[i].r/maxr*100);
+    html += '<div class="hb"><div class="l">'+rows[i].m+'</div><div class="track"><div class="fill" style="width:'+w+'%;background:linear-gradient(90deg,var(--c),var(--v))"></div></div><div class="v">'+fmt(rows[i].r)+'x</div></div>';
+  }
+  document.getElementById('speedbox').innerHTML = html;
+}
+
+/* P2-3 微架构表（数据驱动自 D.profile） */
+function renderMicro(){
+  var rows = [
+    ['plain（repack）', 'AI核', D.profile['plain-repack']['a100'], 'vec_dot'],
+    ['plain（repack）', '通用核', D.profile['plain-repack']['x100'], 'vec_dot'],
+    ['spacemit', 'AI核', D.profile['spacemit']['a100'], 'gemm'],
+    ['spacemit', '通用核', D.profile['spacemit']['x100'], 'gemm']
+  ];
+  var html = '';
+  for (var i=0;i<rows.length;i++){
+    var r = rows[i], p = r[2];
+    var hot = p.buckets[r[3]] != null ? pct(p.buckets[r[3]]) : '-';
+    var ipcCls = p.ipc < 0.2 ? 'neg' : (p.ipc < 0.5 ? 'warn' : '');
+    var feCls = p.frontend > 50 ? 'warn' : '';
+    var beCls = p.backend > 50 ? 'warn' : '';
+    html += '<tr><td>'+r[0]+'</td><td>'+r[1]+'</td><td class="'+ipcCls+'">'+p.ipc.toFixed(2)+'</td><td class="'+feCls+'">'+p.frontend+'%</td><td class="'+beCls+'">'+p.backend+'%</td><td>'+r[3]+' '+hot+'</td></tr>';
+  }
+  document.getElementById('uatab').innerHTML = '<tr><th>构建</th><th>核簇</th><th>IPC</th><th>frontend stall</th><th>backend stall</th><th>热点</th></tr>' + html;
+}
+
+window.addEventListener('load', function(){
+  showGemm('x100');
+  renderHSPills();
+  renderSpeedup();
+  renderMicro();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Part 1 · 模型实测 —— 旅程的成绩单</title>
+<link rel="stylesheet" href="reveal/reveal.css">
+<link rel="stylesheet" href="reveal/theme/black.css">
+<link rel="stylesheet" href="assets/deck.css">
+<link rel="stylesheet" href="assets/katex/katex.min.css">
+</head>
+<body>
+<div class="reveal"><div class="slides">
+
+<section>
+  <h1>Part 1 · 模型实测</h1>
+  <p class="small center">13 模型 × 6 构建实测 + 5 个官方模型 TCM 对比</p>
+  <p class="tiny center">P1-1 数据：commit 0177dcc73 · 通用核 2.0GHz / AI 核 1.8GHz · llama-bench -p 128 -n 128 -t 8 · 源 bash/model_result.txt。P1-2 官方对比：通用核 2.4GHz / AI 核 2.0GHz（口径不同，见 P1-2）。</p>
+</section>
+
+<section>
+  <h2>本 Part 目录</h2>
+  <table class="explain">
+    <tr><th>页</th><th>内容</th></tr>
+    <tr><td>P1-1</td><td>13 模型 × 6 构建实测</td></tr>
+    <tr><td>P1-2</td><td>5 个官方模型对比（A100 AI 核 · TCM 开关）</td></tr>
+    <tr><td>P1-3</td><td>结论 + 带宽反推</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>P1-1 · 13 模型 × 6 构建实测</h2>
+  <p class="small center" id="modelnote" style="margin-bottom:.3em;">sp = spacemit，rep = plain+repack，norep = plain 原装。</p>
+  <div id="mtbtns" style="text-align:center;margin-bottom:.45em;">
+    <button class="buildbtn all on" data-b="all" onclick="showModel('all')">全部 6 构建</button>
+    <button class="buildbtn" data-b="u-sp" onclick="showModel('u-sp')">通用核 sp</button>
+    <button class="buildbtn" data-b="u-rep" onclick="showModel('u-rep')">通用核 rep</button>
+    <button class="buildbtn" data-b="u-norep" onclick="showModel('u-norep')">通用核 norep</button>
+    <button class="buildbtn" data-b="a-sp" onclick="showModel('a-sp')">AI核 sp</button>
+    <button class="buildbtn" data-b="a-rep" onclick="showModel('a-rep')">AI核 rep</button>
+    <button class="buildbtn" data-b="a-norep" onclick="showModel('a-norep')">AI核 norep</button>
+  </div>
+  <div id="mtwrap">
+  <table id="mt">
+    <thead><tr><th>模型</th><th data-b="u-sp">通用 sp</th><th data-b="u-rep">通用 rep</th><th data-b="u-norep">通用 norep</th><th data-b="a-sp">AI核 sp</th><th data-b="a-rep">AI核 rep</th><th data-b="a-norep">AI核 norep</th></tr></thead>
+    <tbody id="mtb"></tbody>
+  </table>
+  </div>
+  <div id="chartwrap" style="display:none;">
+    <div class="leg2"><span><span class="sw" style="background:var(--c)"></span>pp 提示阶段 (token/s)</span><span><span class="sw" style="background:var(--t)"></span>tg 生成阶段 (token/s)</span></div>
+    <div id="chartbox"></div>
+    <p class="note" id="chartnote"></p>
+  </div>
+  <p class="note" id="mtnote">⚠ = 该 cell 原始数据抖动，复测值见注释。</p>
+</section>
+
+<section>
+  <h2>P1-2 · 5 个官方模型对比（A100 AI核 · TCM 开关）</h2>
+  <table class="explain" id="oftab">
+    <tr><th>模型</th><th>TCM开 pp/tg</th><th>TCM关 pp/tg</th><th>pp 提升</th><th>官方文档</th><th>vs 官方 pp</th></tr>
+  </table>
+  <div class="panels" style="margin-top:.5em;">
+    <div class="panel"><div class="pt"><b>TCM 开关对比</b></div>
+      <p class="tiny">5/5 模型 TCM 开快于关：pp +1.3~14.9%，tg +3.8~10.9%（3 次重复稳定）。硬件一致性已确认：<code>mvendorid/marchid/mimpid</code> 与官方文档完全相同。</p></div>
+    <div class="panel"><div class="pt"><b class="warn">2 个异常需谨慎</b></div>
+      <p class="tiny">① <em>gemma4-E4B +127%</em>：官方文档 21.1 疑似旧构建/旧驱动，本机 48.0，数值不可比；② <em>qwen35-2B +19%</em>：官方文档用 <code>Q4_1</code>，本地 <code>Q4_0</code>，量化不同，提升含水。其余 3 个与官方基本持平（-6% / +4% / +1%）。</p></div>
+  </div>
+  <p class="tiny">tg 大多低于官方 6~11%（qwen3-0.6B -8.7%、qwen3-4B -11.4%、qwen3moe -10.1%），唯 <em>gemma4 tg 反高 9.5%</em> 为异常项：解码路径（单 token GEMM）走通用内核，工具链代码生成差异。</p>
+</section>
+
+<section>
+  <h2>P1-3 · 结论与带宽反推</h2>
+  <table class="explain">
+    <tr><th>结论</th><th>数据</th></tr>
+    <tr><td>spacemit 构建是 AI 核可用前提</td><td>plain 慢 50-100x（trendyol 25.3→<em class="neg">0.3</em> t/s），差距就是 IME</td></tr>
+    <tr><td>sp 两核簇几乎一致</td><td>差距 &lt;1%（gemma-3-4b 56.2/56.1）</td></tr>
+    <tr><td>TCM 开启有真实收益</td><td>pp +1.3~14.9%（3 次稳定），最大模型收益最大（+14.9%）</td></tr>
+  </table>
+  <div class="panel" style="margin-top:.5em;"><div class="pt"><b>带宽反推：tg × 模型大小</b></div>
+    <p class="small center" style="margin:.2em 0 .4em;"><span class="math" data-math="\text{带宽}=\text{tg}\times\text{模型大小}"></span></p>
+    <table class="explain">
+      <tr><th>模型</th><th>tg（通用核 sp）</th><th>模型大小</th><th>带宽 = tg × 大小</th></tr>
+      <tr><td>gemma-3-4b</td><td id="bw1"></td><td>2.48 GB</td><td id="bw1v"></td></tr>
+      <tr><td>q1.5b-q4_k</td><td id="bw2"></td><td>1.12 GB</td><td id="bw2v"></td></tr>
+      <tr><td>trendyol-7b</td><td id="bw3"></td><td>4.72 GB</td><td id="bw3v"></td></tr>
+    </table>
+    <p class="tiny">每生成 1 个 token 要读一遍整个权重 → 上限 = DRAM 带宽 ÷ 模型大小（带宽墙）。反推 10 模型 17.5-25.5 GB/s（多数 19-22），贴近实测 DRAM 带宽——tg 已顶到带宽墙。</p>
+  </div>
+  <p class="tiny center" style="margin-top:.5em;">下一站 Part 2 · 热点分析 →</p>
+</section>
+
+</div></div>
+
+<script src="deck_data.js"></script>
+<script src="reveal/reveal.js"></script>
+<script src="assets/katex/katex.min.js"></script>
+<script src="assets/deck.js"></script>
+<script>
+initDeck({ part: 1 });
+var D = window.DECK_DATA;
+function fmt(x){ return Math.round(x*10)/10; }
+function pct(x){ return (Math.round(x*10)/10)+'%'; }
+
+var BUILD_DEFS = [
+  ['u-sp','spacemit','x100','通用核 sp'], ['u-rep','plain-repack','x100','通用核 rep'],
+  ['u-norep','plain-norepack','x100','通用核 norep'], ['a-sp','spacemit','a100','AI核 sp'],
+  ['a-rep','plain-repack','a100','AI核 rep'], ['a-norep','plain-norepack','a100','AI核 norep']
+];
+var CL_LABEL = {x100:'通用核', a100:'AI核'};
+var BD_LABEL = {spacemit:'sp', 'plain-repack':'rep', 'plain-norepack':'norep'};
+var VERIFIED = { 'Q3-0.6B|spacemit|a100': {pp:361.3, tg:43.0, raw:'211±139'} };
+
+function renderModelTable(){
+  var tb = document.getElementById('mtb'), html = '';
+  for (var i=0;i<D.model_order.length;i++){
+    var m = D.model_order[i];
+    html += '<tr><td>'+m+'</td>';
+    for (var j=0;j<BUILD_DEFS.length;j++){
+      var b = BUILD_DEFS[j], cell = D.models[m][b[1]][b[2]];
+      var vk = m+'|'+b[1]+'|'+b[2], mark = '';
+      if (VERIFIED[vk]) mark = ' <span class="warn" title="原始 '+VERIFIED[vk].raw+' 为一次性抖动, 已复测 '+VERIFIED[vk].pp+'/'+VERIFIED[vk].tg+'">⚠</span>';
+      html += '<td data-b="'+b[0]+'">'+fmt(cell.pp)+'/'+fmt(cell.tg)+mark+'</td>';
+    }
+    html += '</tr>';
+  }
+  tb.innerHTML = html;
+}
+function showModel(b){
+  var btns = document.querySelectorAll('#mtbtns .buildbtn');
+  for (var j=0;j<btns.length;j++) btns[j].classList.toggle('on', btns[j].getAttribute('data-b')===b);
+  var tbl = document.getElementById('mtwrap'), ch = document.getElementById('chartwrap');
+  if (b==='all'){
+    tbl.style.display=''; ch.style.display='none';
+  } else {
+    tbl.style.display='none'; ch.style.display='';
+    renderModelChart(b);
+  }
+}
+function renderModelChart(key){
+  var bd = null;
+  for (var j=0;j<BUILD_DEFS.length;j++) if (BUILD_DEFS[j][0]===key) bd = BUILD_DEFS[j];
+  var rows = [];
+  for (var i=0;i<D.model_order.length;i++){
+    var m = D.model_order[i], cell = D.models[m][bd[1]][bd[2]];
+    var pp = cell.pp, tg = cell.tg, vk = m+'|'+bd[1]+'|'+bd[2];
+    if (VERIFIED[vk]){ pp = VERIFIED[vk].pp; tg = VERIFIED[vk].tg; }
+    rows.push({m:m, pp:pp, tg:tg});
+  }
+  rows.sort(function(a,b2){ return b2.pp-a.pp; });
+  var maxpp = rows[0].pp, maxtg = 0;
+  for (var i=0;i<rows.length;i++) maxtg = Math.max(maxtg, rows[i].tg);
+  var html = '';
+  for (var i=0;i<rows.length;i++){
+    var r = rows[i];
+    html += '<div class="hb2"><div class="l">'+r.m+'</div>'
+      + '<div class="track pp"><div class="fill" style="width:'+(r.pp/maxpp*100)+'%;background:var(--c)"></div></div>'
+      + '<div class="v">'+fmt(r.pp)+'</div>'
+      + '<div class="track tg"><div class="fill" style="width:'+(r.tg/maxtg*100)+'%;background:var(--t)"></div></div>'
+      + '<div class="v">'+fmt(r.tg)+'</div></div>';
+  }
+  document.getElementById('chartbox').innerHTML = html;
+  var warn = '';
+  if (VERIFIED['Q3-0.6B|spacemit|a100'] && bd[1]==='spacemit' && bd[2]==='a100') warn = ' | ⚠ Q3-0.6B 取复测值 361/43 (原始 211±139 抖动)';
+  document.getElementById('chartnote').textContent = '构建: '+CL_LABEL[bd[2]]+' x '+BD_LABEL[bd[1]]+' | 条长按 pp/tg 各自最大值归一 (max pp='+fmt(maxpp)+', max tg='+fmt(maxtg)+')'+warn;
+}
+function renderOfficial(){
+  var t = document.getElementById('oftab'), html = '';
+  for (var i=0;i<D.official.length;i++){
+    var o = D.official[i];
+    var cls = o.vs_doc[0]>=0 ? 'pos' : 'neg';
+    html += '<tr><td>'+o.name+'</td><td>'+o.tcm_on[0]+'/'+o.tcm_on[1]+'</td><td>'+o.tcm_off[0]+'/'+o.tcm_off[1]+'</td>'
+      + '<td class="pos">+'+o.tcm_gain[0]+'%</td><td>'+o.official[0]+'/'+o.official[1]+'</td>'
+      + '<td class="'+cls+'">'+(o.vs_doc[0]>0?'+':'')+o.vs_doc[0]+'%</td></tr>';
+  }
+  t.innerHTML += html;
+}
+/* 带宽反推小表（LEARNINGS §4.3：tg x 模型字节数） */
+function renderBw(){
+  var rows = [['gemma-3-4b', 2.48, 'bw1','bw1v'], ['q1.5b-q4_k', 1.12, 'bw2','bw2v'], ['trendyol-7b', 4.72, 'bw3','bw3v']];
+  for (var i=0;i<rows.length;i++){
+    var m = rows[i][0], size = rows[i][1];
+    var tg = D.models[m]['spacemit']['x100'].tg;
+    document.getElementById(rows[i][2]).textContent = fmt(tg);
+    document.getElementById(rows[i][3]).textContent = fmt(tg*size) + ' GB/s';
+  }
+}
+window.addEventListener('load', function(){
+  renderModelTable();
+  renderOfficial();
+  renderBw();
+});
+</script>
+</body>
+</html>

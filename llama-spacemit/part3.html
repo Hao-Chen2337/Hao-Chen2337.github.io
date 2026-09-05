@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Part 3 · 正确性 / 调试 —— 旅程的安全保障</title>
+<link rel="stylesheet" href="reveal/reveal.css">
+<link rel="stylesheet" href="reveal/theme/black.css">
+<link rel="stylesheet" href="assets/deck.css">
+<link rel="stylesheet" href="assets/katex/katex.min.css">
+</head>
+<body>
+<div class="reveal"><div class="slides">
+
+<section>
+  <h1>Part 3 · 正确性 / 调试</h1>
+</section>
+
+<section>
+  <h2>本 Part 目录</h2>
+  <table class="explain">
+    <tr><th>页</th><th>内容</th></tr>
+    <tr><td>P3-1</td><td>正确性验证：20 类量化 × 6 构建/核簇</td></tr>
+    <tr><td>P3-2</td><td>TCM 崩溃/泄漏：现象 → 定位 → 解决</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>P3-1 · 正确性验证：20 类量化 × 6 构建/核簇</h2>
+  <p class="small" style="margin-bottom:.3em;">误差 = test-quantize-fns 相对 reference 实现。先 <code>vlen</code> 验核簇真值（通用核 256bit / AI核 1024bit），再对拍。</p>
+  <div id="ctbtns" style="text-align:center;margin-bottom:.3em;">
+    <button class="buildbtn" onclick="toggleCtMetric()" id="ctmetric">指标: abs 误差</button>
+    <button class="buildbtn all on" data-b="all" onclick="showCt('all')">全部 6 构建</button>
+    <button class="buildbtn" data-b="u-sp" onclick="showCt('u-sp')">通用核 sp</button>
+    <button class="buildbtn" data-b="u-rep" onclick="showCt('u-rep')">通用核 rep</button>
+    <button class="buildbtn" data-b="u-norep" onclick="showCt('u-norep')">通用核 norep</button>
+    <button class="buildbtn" data-b="a-sp" onclick="showCt('a-sp')">AI核 sp</button>
+    <button class="buildbtn" data-b="a-rep" onclick="showCt('a-rep')">AI核 rep</button>
+    <button class="buildbtn" data-b="a-norep" onclick="showCt('a-norep')">AI核 norep</button>
+  </div>
+  <div id="ctwrap"></div>
+  <p class="note" id="ctnote">颜色: <span class="e0">绿</span> = 误差 &lt; 0.001, <span class="e1">黄</span> = 0.001~0.01, <span class="e2">红</span> = ≥ 0.01。</p>
+</section>
+
+<section>
+  <h2>P3-2 · TCM 崩溃/泄漏：现象 → 定位 → 解决</h2>
+  <div class="panels">
+    <div class="panel"><div class="pt"><b>现象</b></div>
+      <p class="tiny"><code>-t 16</code> 线程号越界 abort（与 TCM 无关）；崩溃后 8 块 TCM 泄漏、owner 是死线程 → 之后 wait 必超时 → 自锁级联。</p></div>
+    <div class="panel"><div class="pt"><b>定位</b></div>
+      <p class="tiny">探针直调 libspine_tcm：8/8 块 <em>is_acquired=1</em> 且 owner 是已退出线程 → 泄漏实锤。</p></div>
+    <div class="panel"><div class="pt"><b>解决</b></div>
+      <p class="tiny">① <code>spacemit-tcm-smi -c</code> 一键清理；② 临时 <code>SPACEMIT_DISABLE_TCM=1</code> 绕过；③ 根治 <code>-t 8</code> ≤ 首选核数，崩溃后先清再跑。</p></div>
+  </div>
+  <p class="tiny center" style="color:var(--warn);">最容易踩的坑：崩溃后不先清理就重跑，第二次超时是第一条泄漏的余波，会误判"修复无效"。</p>
+</section>
+
+<section>
+  <h1>谢谢</h1>
+  <p>一个 token 的旅程：GGML 解析 + K3 实测 + TCM 调试</p>
+  <p class="small center">欢迎交流 · 回 <a href="index.html" style="color:#0369a1">门户页</a></p>
+</section>
+
+</div></div>
+
+<script src="deck_data.js"></script>
+<script src="deck_code.js"></script>
+<script src="reveal/reveal.js"></script>
+<script src="assets/annotations.js"></script>
+<script src="assets/katex/katex.min.js"></script>
+<script src="assets/deck.js"></script>
+<script>
+initDeck({ part: 3 });
+var D = window.DECK_DATA;
+
+var CT_STATE = 'all', CT_METRIC = 'abs';
+var BUILD_DEFS = [
+  ['u-sp','spacemit','x100','通用核 sp'], ['u-rep','plain-repack','x100','通用核 rep'],
+  ['u-norep','plain-norepack','x100','通用核 norep'], ['a-sp','spacemit','a100','AI核 sp'],
+  ['a-rep','plain-repack','a100','AI核 rep'], ['a-norep','plain-norepack','a100','AI核 norep']
+];
+function clsErr(v){ return v<0.001?'e0':(v<0.01?'e1':'e2'); }
+function renderCt(){
+  var order = D.correctness.order, html = '';
+  if (CT_STATE==='all'){
+    html = '<table id="ct"><thead><tr><th>量化类型</th>';
+    for (var j=0;j<BUILD_DEFS.length;j++) html += '<th>'+BUILD_DEFS[j][3]+'</th>';
+    html += '</tr></thead><tbody>';
+    for (var i=0;i<order.length;i++){
+      var t = order[i];
+      html += '<tr><td>'+t+'</td>';
+      for (var j=0;j<BUILD_DEFS.length;j++){
+        var b = BUILD_DEFS[j], e = D.correctness.builds[b[1]][b[2]][t];
+        var v = e ? e[CT_METRIC] : null;
+        html += '<td class="'+(v==null?'':clsErr(v))+'">'+(v==null?'-':v.toExponential(2))+'</td>';
+      }
+      html += '</tr>';
+    }
+    html += '</tbody></table>';
+  } else {
+    var bd = null;
+    for (var j=0;j<BUILD_DEFS.length;j++) if (BUILD_DEFS[j][0]===CT_STATE) bd = BUILD_DEFS[j];
+    html = '<table id="ct"><thead><tr><th>量化类型</th><th>abs 误差</th><th>dot 误差</th><th>ok</th></tr></thead><tbody>';
+    for (var i=0;i<order.length;i++){
+      var t = order[i], e = D.correctness.builds[bd[1]][bd[2]][t];
+      html += '<tr><td>'+t+'</td>'
+        + '<td class="'+(e?clsErr(e.abs):'')+'">'+(e?e.abs.toExponential(2):'-')+'</td>'
+        + '<td class="'+(e?clsErr(e.dot):'')+'">'+(e?e.dot.toExponential(2):'-')+'</td>'
+        + '<td class="'+(e&&e.ok?'okrow':'neg')+'">'+(e&&e.ok?'ok':'FAIL')+'</td></tr>';
+    }
+    html += '</tbody></table>';
+  }
+  document.getElementById('ctwrap').innerHTML = html;
+}
+function showCt(b){
+  CT_STATE = b;
+  var btns = document.querySelectorAll('#ctbtns .buildbtn[data-b]');
+  for (var j=0;j<btns.length;j++) btns[j].classList.toggle('on', btns[j].getAttribute('data-b')===b);
+  renderCt();
+}
+function toggleCtMetric(){
+  CT_METRIC = CT_METRIC==='abs' ? 'dot' : 'abs';
+  document.getElementById('ctmetric').textContent = '指标: ' + (CT_METRIC==='abs'?'abs 误差':'dot 误差');
+  renderCt();
+}
+
+window.addEventListener('load', function(){ renderCt(); });
+</script>
+</body>
+</html>
