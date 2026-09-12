@@ -4,6 +4,13 @@
 // ═══════════════════════════════════════════════════
 const POSTS = [
   {
+    title: "从零开始参与开源",
+    date: "2026-09-12",           // 格式：YYYY-MM-DD
+    tags: ["开源", "甲辰计划", "RISC-V", "LLVM"],
+    url: "posts/from-zero-to-open-source.html",
+    summary: "甲辰计划线上实习记录：从读 K3 手册、部署 llama.cpp，到在真机定位 Q5_0 缺失分支、给 clang-tidy 修 bug。"
+  },
+  {
     title: "llama.cpp × SpaceMiT 调研",
     date: "2026-09-05",           // 格式：YYYY-MM-DD
     tags: ["RISC-V", "大模型", "调研"],
