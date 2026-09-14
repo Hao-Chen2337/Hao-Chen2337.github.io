@@ -270,7 +270,8 @@
 
   <button class="top-btn" id="topBtn" title="返回顶部">↑</button>
 
-  <script src="posts.js"></script>
+  <!-- 发新文章时，把下面 ?v= 改成当天日期（如 20260914），即可跳过 CDN/浏览器缓存，首页立即更新 -->
+  <script src="posts.js?v=20260914"></script>
   <script>
     // POSTS 由 posts.js 提供（const POSTS = [...]）。若缺失则兜底为空数组。
     if (typeof POSTS === 'undefined') { window.POSTS = []; }
