@@ -44,15 +44,15 @@
 
   <p style="margin:0 0 18px 0;font-size:16px;line-height:1.85;color:#333333;letter-spacing:.5px;text-align:justify;">跑到 <code style="background:#f2f3f5;color:#c7254e;padding:2px 6px;border-radius:3px;font-family:Menlo,Consolas,'Courier New',monospace;font-size:13.5px;">Q4_K_M</code> 时，发现它慢得异常。一开始我以为是性能问题，就开始查。查了半天没找到原因，但是发现它的对话输出是乱码。</p>
 
-  <p style="margin:0 0 18px 0;font-size:16px;line-height:1.85;color:#333333;letter-spacing:.5px;text-align:justify;">一看到乱码，我就懂了：慢可能是性能有优化空间，乱码那基本就是 bug 了。</p>
+  <p style="margin:0 0 18px 0;font-size:16px;line-height:1.85;color:#333333;letter-spacing:.5px;text-align:justify;">看到乱码的瞬间，我脑子里就冒出个念头：慢还可能只是性能有优化空间，但这该不会是个 bug 吧？</p>
 
   <p style="margin:0 0 18px 0;font-size:16px;line-height:1.85;color:#333333;letter-spacing:.5px;text-align:justify;">顺着链路排查下去，最后定位到SpaceMiT 后端的派发表。派发表里其余量化类型都有分支，唯独缺了 <code style="background:#f2f3f5;color:#c7254e;padding:2px 6px;border-radius:3px;font-family:Menlo,Consolas,'Courier New',monospace;font-size:13.5px;">GGML_TYPE_Q5_0</code>。<code style="background:#f2f3f5;color:#c7254e;padding:2px 6px;border-radius:3px;font-family:Menlo,Consolas,'Courier New',monospace;font-size:13.5px;">Q4_K_M</code> 属于混合量化格式，内部刚好包含 <code style="background:#f2f3f5;color:#c7254e;padding:2px 6px;border-radius:3px;font-family:Menlo,Consolas,'Courier New',monospace;font-size:13.5px;">Q5_0</code> 分片，所以才触发了缺失分支。</p>
 
-  <p style="margin:0 0 18px 0;font-size:16px;line-height:1.85;color:#333333;letter-spacing:.5px;text-align:justify;">这里说的派发表（dispatch table），说白了就是一张「量化类型 → 对应计算函数」的查表。程序拿到一个类型，不用写一长串 if/else 逐个判断，直接拿类型当索引查这张表，跳到对应的实现——这是运行时里很常见的「按值分发」手法（维基百科的 <a href="https://en.wikipedia.org/wiki/Dispatch_table" style="color:#576b95;">Dispatch table</a> 词条讲的就是这个）。</p>
+  <p style="margin:0 0 18px 0;font-size:16px;line-height:1.85;color:#333333;letter-spacing:.5px;text-align:justify;">这里提到的派发表（dispatch table），简而言之就是程序拿到一个量化类型，然后通过这张表找到对应的函数实现，再跳转过去，是一种常见的「按值分发」手法，在这里说白了就是一个 switch case 的分支语句。</p>
 
   <pre style="background:#282c34;color:#e6e6e6;padding:14px 16px;border-radius:6px;font-family:Menlo,Consolas,'Courier New',monospace;font-size:14px;line-height:1.6;margin:0 0 18px 0;white-space:pre-wrap;word-break:break-all;">case GGML_TYPE_Q5_0:</pre>
 
-  <p style="margin:0 0 18px 0;font-size:16px;line-height:1.85;color:#333333;letter-spacing:.5px;text-align:justify;">碰巧的是，这个格式后面的计算逻辑其实已经写好了，只差这一句把它接上。说来挺奇妙的——这么大的项目，我一个刚进来的新人，居然靠一行代码就能做出点实在的贡献，就好像前面的一切早就安排好了，就等着有人来把这一句补上。</p>
+  <p style="margin:0 0 18px 0;font-size:16px;line-height:1.85;color:#333333;letter-spacing:.5px;text-align:justify;">碰巧的是，这个格式后面的计算逻辑其实已经写好了，只差这一句把它接上。说来我挺诧异的——这么庞大的一个项目，居然会漏掉这么小的一处，就好像是提前排好了，专门等着有缘人来发现它。</p>
 
   <p style="margin:0 0 18px 0;font-size:16px;line-height:1.85;color:#333333;letter-spacing:.5px;text-align:justify;">补上然后重编再跑就不乱码了，速度也正常了。</p>
 
