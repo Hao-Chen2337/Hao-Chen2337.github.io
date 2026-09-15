@@ -44,7 +44,7 @@
 
   <p style="margin:0 0 18px 0;font-size:16px;line-height:1.85;color:#333333;letter-spacing:.5px;text-align:justify;">跑到 <code style="background:#f2f3f5;color:#c7254e;padding:2px 6px;border-radius:3px;font-family:Menlo,Consolas,'Courier New',monospace;font-size:13.5px;">Q4_K_M</code> 时，发现它慢得异常。一开始我以为是性能问题，就开始查。查了半天没找到原因，但是发现它的对话输出是乱码。</p>
 
-  <p style="margin:0 0 18px 0;font-size:16px;line-height:1.85;color:#333333;letter-spacing:.5px;text-align:justify;">看到乱码的瞬间，我脑子里就冒出个念头：慢还可能只是性能有优化空间，但这该不会是个 bug 吧？</p>
+  <p style="margin:0 0 18px 0;font-size:16px;line-height:1.85;color:#333333;letter-spacing:.5px;text-align:justify;">我看到乱码的瞬间，脑子里就冒出个想法：这很有可能是个 bug！</p>
 
   <p style="margin:0 0 18px 0;font-size:16px;line-height:1.85;color:#333333;letter-spacing:.5px;text-align:justify;">顺着链路排查下去，最后定位到SpaceMiT 后端的派发表。派发表里其余量化类型都有分支，唯独缺了 <code style="background:#f2f3f5;color:#c7254e;padding:2px 6px;border-radius:3px;font-family:Menlo,Consolas,'Courier New',monospace;font-size:13.5px;">GGML_TYPE_Q5_0</code>。<code style="background:#f2f3f5;color:#c7254e;padding:2px 6px;border-radius:3px;font-family:Menlo,Consolas,'Courier New',monospace;font-size:13.5px;">Q4_K_M</code> 属于混合量化格式，内部刚好包含 <code style="background:#f2f3f5;color:#c7254e;padding:2px 6px;border-radius:3px;font-family:Menlo,Consolas,'Courier New',monospace;font-size:13.5px;">Q5_0</code> 分片，所以才触发了缺失分支。</p>
 
