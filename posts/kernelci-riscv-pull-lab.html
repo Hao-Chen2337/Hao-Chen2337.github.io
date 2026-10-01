@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="RISC-V KernelCI automation for riscv-admin/dev-partners#49: continuous regression testing of the Linux riscv Vector/Hypervisor extensions on QEMU, with the test profile submitted upstream.">
+<link rel="icon" type="image/png" href="../avatar.png">
+<title>From an SOW to a machine that runs RISC-V tests every day · Hao Chen</title>
+<style>
+  :root {
+    --bg: #f7f8fb; --surface: #ffffff; --text: #111827; --muted: #6b7280;
+    --faint: #9ca3af; --border: #e7e8ee; --accent: #6366f1; --accent-2: #a855f7; --accent-3: #ec4899;
+  }
+  :root[data-theme="dark"] {
+    --bg: #0a0b10; --surface: #13141b; --text: #eceef4; --muted: #9aa1b2;
+    --faint: #636b7c; --border: #23252f; --accent: #818cf8; --accent-2: #c084fc; --accent-3: #f472b6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.8; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 24px; }
+  .header { border-bottom: 1px solid var(--border); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(8px); }
+  .header .left a { color: var(--muted); font-size: 14px; text-decoration: none; }
+  .header .left a:hover { color: var(--accent); }
+  .header .brand { font-weight: 700; font-size: 15px; }
+  .theme-btn { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 999px; width: 32px; height: 32px; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+  article { padding: 48px 0 32px; }
+  h1 { font-size: 30px; letter-spacing: -.4px; line-height: 1.3; margin-bottom: 14px; }
+  .meta { color: var(--faint); font-size: 14px; margin-bottom: 28px; display: flex; gap: 14px; flex-wrap: wrap; }
+  .meta .tag { color: var(--accent); }
+  .body { font-size: 16px; color: var(--text); }
+  .body h2 { font-size: 22px; margin: 32px 0 12px; }
+  .body h3 { font-size: 18px; margin: 24px 0 10px; }
+  .body p { margin-bottom: 16px; }
+  .body ul, .body ol { margin: 0 0 16px 22px; }
+  .body code {
+    background: var(--surface-2, #f1f2f7); padding: 2px 6px; border-radius: 5px;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 14px;
+  }
+  :root[data-theme="dark"] .body code { background: #1f2230; }
+  .body pre {
+    background: #0f1117; color: #e6e8ee; padding: 16px 18px; border-radius: 10px;
+    overflow-x: auto; margin-bottom: 16px; font-size: 14px; line-height: 1.6;
+  }
+  .body pre code { background: transparent; padding: 0; color: inherit; }
+  .body img { max-width: 100%; border-radius: 10px; }
+  .body a { color: var(--accent); }
+
+  .post-end { border-top: 1px solid var(--border); margin-top: 32px; padding-top: 20px; }
+  .tags-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+  .tags-row .tag { font-size: 13px; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); padding: 3px 12px; border-radius: 999px; }
+  .prevnext { display: flex; justify-content: space-between; gap: 16px; font-size: 14px; }
+  .prevnext a { color: var(--muted); text-decoration: none; }
+  .prevnext a:hover { color: var(--accent); }
+  .prevnext .empty { color: var(--faint); }
+  .back { display: block; text-align: center; margin: 24px 0 48px; color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="left"><a href="../index.html">← Back to home</a></div>
+    <button class="theme-btn" onclick="toggleTheme()" title="切换主题">🌙</button>
+  </div>
+  <div class="wrap">
+    <article>
+      <h1>From an SOW to a machine that runs RISC-V tests every day</h1>
+      <div class="meta">
+        <span>2026-10-01</span>
+        <span>~1,800 words</span>
+        <span class="tag"># RISC-V</span>
+        <span class="tag"># KernelCI</span>
+        <span class="tag"># QEMU</span>
+        <span class="tag"># kselftest</span>
+      </div>
+      <div class="body">
+        <h2>What this work set out to solve</h2>
+        <p>The SOW's problem statement names three gaps: <strong>architectural side channels</strong>, <strong>extensions</strong>, and <strong>hardware-behavior variance across early-adopter development boards</strong>. The goal is a localized KernelCI automation that catches regressions across <strong>compilers, toolchains, and microarchitectures</strong>. Of those three gaps, we only touched <strong>extensions</strong>, and only on QEMU; the other two were left undone. The SOW breaks the whole thing into four phases; below I go phase by phase through what we did.</p>
+        <h2>What we did, phase by phase</h2>
+        <h3>Phase 1 · Setup &amp; first issue</h3>
+        <ul>
+          <li><strong>Local containerized test pipeline</strong> — all tests run in Docker containers (tuxrun uses docker as its container runtime). The pipeline wasn't built from scratch: it borrows the upstream <code>kernelci-pipeline</code> job definitions, plus a local stack of our own (API + artifact server + callback + scheduler, <code>deploy/stack.sh</code>). <strong>No LAVA</strong>; we nominally stood up a <code>lab</code> (runtime name <code>pull-labs-riscv</code>) but turned out not to need it much — the vast majority of the work is "pull a build straight from the API and run it."</li>
+          <li><strong>Upstream tracking issue board</strong> — <a href="https://github.com/kernelci/kernelci-project/issues/585">kernelci/kernelci-project#585</a>, the integration tracking thread kept in sync with upstream.</li>
+          <li><strong>First validation script parsed locally</strong> — <code>verify.py</code>: one command gates the whole tree. One of its <code>pipeline yaml</code> checks runs <code>tests/validate_yaml.py</code>, which verifies that the PR1 test profile (YAML) we submitted still parses.</li>
+        </ul>
+        <h3>Phase 2 · Core logic</h3>
+        <p>The SOW asks for three things here: deploy the main execution logic; have a script automatically catch configuration drift; and test regression pass-rates for targeted extensions on QEMU/Spike.</p>
+        <p><strong>Main execution logic</strong> — the execution engine under <code>lib/</code> (<code>runner.py</code> / <code>judge.py</code> / <code>sink.py</code>, the last holding <code>Sink</code> / <code>Ledger</code> / <code>Callback</code>), centered on a single <code>Job.run()</code> shared by all three entry points (CLI, worker, web), plus a resident <code>poller</code> (<code>pull_worker.py</code>) that polls for and claims jobs.</p>
+        <p><strong>Configuration drift</strong> — the same job, built two days apart, can come out of a different <code>.config</code>: one toolchain bump, one defconfig change, and it quietly starts testing a different kernel than the one you think you're testing. Our approach is to diff two builds' <code>.config</code> files line by line and turn the difference into a number. <code>drift.py</code> compares a "newer" and an "older" build's config, prints <code>--- added</code> / <code>--- removed</code> / <code>--- changed</code>, and answers with its exit code: 0 means same, 1 means drifted. "Has the config drifted" goes from a feeling to a return value a script can branch on.</p>
+        <p><strong>Regression pass-rate for extensions</strong> — the SOW only names "Vector/Hypervisor" as examples, but if you actually look at a RISC-V kernel config, <strong>far more than those two extensions are on</strong>.</p>
+        <p>A normal RISC-V kernel is based on <code>rv64ima</code> — I (integer), M (multiply/divide), A (atomics) — and on top of that adds:</p>
+        <ul>
+          <li><code>f</code> / <code>d</code>: single- and double-precision floating point;</li>
+          <li><code>c</code>: compressed instructions;</li>
+          <li><code>v</code>: vector;</li>
+          <li>plus a string of Z extensions: <code>Zba</code> / <code>Zbb</code> (bit manipulation), <code>Zicbom</code> / <code>Zicboz</code> / <code>Zicbop</code> (cache operations), <code>Zacas</code> (atomic compare-and-swap), <code>Svnapot</code> / <code>Svpbmt</code> (page-table related), <code>Supm</code> (user pointer masking), <code>Zicsr</code> / <code>Zifencei</code> (CSR and memory barriers)…</li>
+        </ul>
+        <p>Most of these are on by default in defconfig. So the "targeted extensions" aren't two — they're a whole string of them.</p>
+        <p>We run the kernel's own two test collections, which cover the main items in that string:</p>
+        <ul>
+          <li><strong>riscv collection</strong> — vector state and CSR checks (<code>vstate_prctl</code> / <code>vstate_ptrace</code>), <code>hwprobe</code> (reports the extensions the machine actually supports), <code>cbo</code> (cache operations, the <code>Zicbo*</code> ones), <code>pointer_masking</code> (pointer masking, the <code>Supm</code> one)…</li>
+          <li><strong>kvm collection</strong> — virtualization, driving a RISC-V virtual CPU with KVM.</li>
+        </ul>
+        <p>Those with <strong>dedicated self-tests</strong> are vector (<code>vstate_*</code>), pointer masking (<code>pointer_masking</code>), cache (<code>cbo</code>), and virtualization (KVM). The rest — <code>Zba</code> / <code>Zbb</code> / <code>Zacas</code> / <code>Svnapot</code> / <code>Svpbmt</code> — are enabled and exercised by the kernel's own code paths, but have <strong>no dedicated self-test</strong>: they count as "reached", not "tested".</p>
+        <p>Virtualization has the same caveat: we only test <strong>part</strong> of it. QEMU's TCG is an emulator, not hardware; some KVM self-tests ask for capabilities that only exist when a real accelerator is underneath, and an emulator can't provide them. So we <strong>explicitly exclude</strong> what can't pass — three perf benchmarks, two stress tests, two that burn their budget or hang outright under TCG, plus <code>arch_timer</code> (an aarch64 test) and a <code>demand_paging_test</code> that also times out, nine in all — rather than pretend they're green or rediscover them red every night.</p>
+        <p>Also worth clearing up, because it's easy to confuse: this "regression pass-rate" is reported in <strong>two places</strong> and they look different — the CLI's <code>trend.py</code> reads job-node history from the API and lists it node by node; the web trend panel reads the local ledger and draws a per-test timeline. The verdict logic is the same (pass→fail records a regression, passing again clears it); only the data source and the way it's sliced differ.</p>
+        <h3>Phase 3 · Upstream integration</h3>
+        <p>The SOW asks for a formal PR to the mainline KernelCI parent codebase, integrating the RISC-V test profile suite.</p>
+        <ul>
+          <li>Test profile suite → <a href="https://github.com/kernelci/kernelci-pipeline/pull/1599">kernelci/kernelci-pipeline#1599</a>; RISC-V kselftest backend → <a href="https://github.com/kernelci/tuxlava/pull/50">kernelci/tuxlava#50</a>. <code>kernelci-pipeline</code>.</li>
+        </ul>
+        <h3>Phase 4 · Documentation &amp; demo</h3>
+        <p>The SOW asks for: a comprehensive test-execution runbook; a technical blog post + demo; LF badges.</p>
+        <ul>
+          <li>runbook → <code>RUNBOOK.md</code></li>
+          <li>technical blog + demo → this post, plus the recorded demo video.</li>
+        </ul>
+        <h2>How the project is put together</h2>
+        <p><strong>What we test with — we don't build our own; we take what's ready on the official site.</strong> The kernel isn't something we compile ourselves. On the KernelCI site, every new commit gets built by someone else; artifacts live on <code>storage.kernelci.org</code>, metadata on <code>api.kernelci.org</code>. What we do is not build another build system, but <strong>read these builds off the official API</strong> — download, filter, run, record.</p>
+        <p><strong>The RISC-V build stream actually has three jobs</strong> — <code>kbuild-gcc-14-riscv</code>, its SMP variant <code>kbuild-gcc-14-riscv-smp</code>, and a clang one, <code>kbuild-clang-21-riscv-smp</code> (clang-21, also the SMP variant). <strong>This project currently only hooks up <code>kbuild-gcc-14-riscv</code></strong>; the other two — including the clang/LLVM one — aren't wired in yet. So everything we pull is a GCC-14 kernel.</p>
+        <p>The code is layered, three layers from the outside in:</p>
+        <ul>
+          <li><strong>upper layer</strong>: entry points and viewers — twelve CLI scripts + the web GUI + the worker, all "selectors or viewers";</li>
+          <li><strong>middle layer</strong>: <code>lib/</code> — data structures + the execution engine, running the "pick a build → make it local → run a job → get a verdict" flow;</li>
+          <li><strong>lower layer</strong>: the outside world — KernelCI's HTTP API, tuxrun/QEMU, the local filesystem.</li>
+        </ul>
+        <p>To make that "fetch → run → record" reusable, we wrapped the flow in a set of data structures rather than scattering it across scripts. Roughly one stream:</p>
+        <ul>
+          <li><strong>remote</strong>: <code>Api</code> (ask the site) → <code>Kbuild</code> (one build) → <code>Kbuilds</code> (a batch of builds);</li>
+          <li><strong>local</strong>: <code>Build</code> / <code>Builds</code> (the "register" recording which builds exist) → <code>Job</code> (a job to run) → <code>Run</code> (one run) → <code>Outcome</code> (one verdict);</li>
+          <li><strong>landing</strong>: the verdict goes into <code>Ledger</code> (the ledger, kept permanently on disk), or back to the pipeline via <code>Callback</code>.</li>
+        </ul>
+        <p>On top of that structure sit three entry points:</p>
+        <ul>
+          <li><strong>CLI</strong> — one command, one thing: <code>table.py</code> manages the table (read / filter / run), <code>results.py</code> reads the ledger back, <code>drift.py</code> diffs configs, <code>trend.py</code> reports regressions. The exit code is the result.</li>
+          <li><strong>Web (GUI)</strong> — port <code>8079</code> by default: a build table, a "what hasn't run and why" todo, and an analysis page. Everything on the page is read-only except the buttons, and every button is one command in the engine.</li>
+          <li><strong>worker (resident)</strong> — <code>pull_worker.py</code> polls the production API for jobs, claims, runs, and reports back; it's the never-stopping entry point behind "runs every day".</li>
+        </ul>
+        <p>Those three can be split further: the <strong>CLI</strong> and the <strong>web</strong> are the "normal", human-facing entry points, the ones the SOW actually names as deliverables; the <strong>worker</strong> is more like the hired help — it isn't an SOW deliverable, just the layer that keeps "runs every day" going without anyone watching. It talks to tasks dispatched from upstream, and right now it hasn't gotten the token yet, so it isn't actually connected.</p>
+        <p>The finer details are in <code>RUNBOOK.md</code>; not repeating them here.</p>
+        <p><strong>Demo</strong> — a short demo walks through both of those entry points. The GUI side: pulling build resources, running, viewing results (logs at the GUI's <code>/runs/&lt;id&gt;/log</code> — this page didn't make it into the recording, so the address is spelled out here), viewing configuration drift (not necessarily of the run builds — the earlier builds aren't pulled), and regression analysis (unlike the CLI's, this analyzes the local ledger). The CLI side: a few <code>table.py</code> features like viewing <code>todo</code> and <code>index-pull</code> (this shows the post-pull result, so there are many entries — the previous ones get counted in, and these are only the cards that were pulled), plus a simple run, config drift, and regression analysis. One honest note: the demo has no audio or subtitles, the editing is rough, and it's just a simple walkthrough — the coverage isn't comprehensive.</p>
+        <video controls src="de.mp4" style="max-width:100%;border-radius:8px"></video>
+        <h2>What's still missing — back to the SOW, item by item</h2>
+        <p>Bottom line first: this thing still isn't the "comprehensive" testing the SOW describes — it's a small slice made solid, with the gaps spelled out one by one.</p>
+        <ol>
+          <li><strong>The compiler dimension is incomplete</strong>: we only wired up <code>kbuild-gcc-14-riscv</code>. The clang-21 (<code>kbuild-clang-21-riscv-smp</code>) and the gcc <code>-smp</code> variant on the site aren't hooked up yet. The SOW says "across compilers and toolchains"; we're only halfway there.</li>
+          <li><strong>Architectural side channels and hardware-behavior variance across real boards are not done</strong>: those two gaps we stayed on QEMU the whole time and never touched real hardware. (Though someone else seems to be picking that up.)</li>
+          <li><strong>The worker is submitted but not actually taking jobs yet</strong>: the test profile is merged upstream (PR #1599), the pipeline is dispatching jobs for this machine and they're visible on the production API, but nothing claims them, so nodes end in timeout. It's stuck on aligning a callback token — the last link I plan to close next.</li>
+          <li><strong>The code itself</strong>: the design still has room to improve — both the architecture and the code likely hold a good number of small issues, and it isn't exactly pleasant to use yet.</li>
+        </ol>
+        <h2>Links</h2>
+        <ul>
+          <li>SOW: <a href="https://github.com/riscv-admin/dev-partners/issues/49">riscv-admin/dev-partners#49</a></li>
+          <li>test profile upstream: <a href="https://github.com/kernelci/kernelci-pipeline/pull/1599">kernelci/kernelci-pipeline#1599</a></li>
+          <li>RISC-V kselftest backend in tuxlava: <a href="https://github.com/kernelci/tuxlava/pull/50">kernelci/tuxlava#50</a></li>
+          <li>integration tracking issue: <a href="https://github.com/kernelci/kernelci-project/issues/585">kernelci/kernelci-project#585</a></li>
+          <li>code repo: <a href="https://github.com/Hao-Chen2337/kernelci-riscv">Hao-Chen2337/kernelci-riscv</a></li>
+        </ul>
+      </div>
+
+      <div class="post-end">
+        <div class="tags-row">
+          <span class="tag">RISC-V</span>
+          <span class="tag">KernelCI</span>
+          <span class="tag">QEMU</span>
+          <span class="tag">kselftest</span>
+        </div>
+        <div class="prevnext">
+          <span class="empty">上一篇：没有了</span>
+          <a href="posts/from-zero-to-open-source.html">下一篇：从零开始参与开源 →</a>
+        </div>
+      </div>
+    </article>
+    <a class="back" href="../index.html">← Back to home</a>
+  </div>
+
+  <script>
+    function toggleTheme() {
+      var root = document.documentElement;
+      var dark = root.getAttribute('data-theme') !== 'dark';
+      root.setAttribute('data-theme', dark ? 'dark' : 'light');
+      document.querySelector('.theme-btn').textContent = dark ? '☀️' : '🌙';
+      try { localStorage.setItem('theme', dark ? 'dark' : 'light'); } catch (e) {}
+    }
+    (function () {
+      var dark = null;
+      try { dark = localStorage.getItem('theme'); } catch (e) {}
+      if (dark === 'dark' || (dark === null && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        document.querySelector('.theme-btn').textContent = '☀️';
+      }
+    })();
+  </script>
+</body>
+</html>

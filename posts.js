@@ -4,6 +4,13 @@
 // ═══════════════════════════════════════════════════
 const POSTS = [
   {
+    title: "From an SOW to a machine that runs RISC-V tests every day",
+    date: "2026-10-01",
+    tags: ["RISC-V", "KernelCI", "QEMU", "kselftest"],
+    url: "posts/kernelci-riscv-pull-lab.html",
+    summary: "承接 riscv-admin/dev-partners#49：在 QEMU 上对 Linux riscv 的向量与虚拟化扩展做持续回归测试，并把测试 profile 提交上游 kernelci-pipeline。含演示视频。"
+  },
+  {
     title: "从零开始参与开源",
     date: "2026-09-14",           // 格式：YYYY-MM-DD
     tags: ["开源", "甲辰计划", "RISC-V", "LLVM"],
