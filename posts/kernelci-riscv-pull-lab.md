@@ -46,7 +46,7 @@ Also worth clearing up, because it's easy to confuse: this "regression pass-rate
 
 The SOW asks for a formal PR to the mainline KernelCI parent codebase, integrating the RISC-V test profile suite.
 
-- Test profile suite → [kernelci/kernelci-pipeline#1599](https://github.com/kernelci/kernelci-pipeline/pull/1599); RISC-V kselftest backend → [kernelci/tuxlava#50](https://github.com/kernelci/tuxlava/pull/50). `kernelci-pipeline`.
+- Test profile suite → [kernelci/kernelci-pipeline#1599](https://github.com/kernelci/kernelci-pipeline/pull/1599), merged; RISC-V kselftest backend → [kernelci/tuxlava#50](https://github.com/kernelci/tuxlava/pull/50), merged.
 
 ### Phase 4 · Documentation & demo
 
@@ -59,11 +59,11 @@ The SOW asks for: a comprehensive test-execution runbook; a technical blog post 
 
 **What we test with — we don't build our own; we take what's ready on the official site.** The kernel isn't something we compile ourselves. On the KernelCI site, every new commit gets built by someone else; artifacts live on `storage.kernelci.org`, metadata on `api.kernelci.org`. What we do is not build another build system, but **read these builds off the official API** — download, filter, run, record.
 
-**The RISC-V build stream actually has three jobs** — `kbuild-gcc-14-riscv`, its SMP variant `kbuild-gcc-14-riscv-smp`, and a clang one, `kbuild-clang-21-riscv-smp` (clang-21, also the SMP variant). **This project currently only hooks up `kbuild-gcc-14-riscv`**; the other two — including the clang/LLVM one — aren't wired in yet. So everything we pull is a GCC-14 kernel.
+**Upstream defines a dozen RISC-V kbuild jobs; three were in scope here** — `kbuild-gcc-14-riscv`, `kbuild-gcc-14-riscv-smp`, and a clang one, `kbuild-clang-21-riscv-smp`. (The `-smp` in those names is upstream's, and it reads backwards: both jobs add the fragment `CONFIG_SMP=n`, so they are the uniprocessor builds.) **This project currently only hooks up `kbuild-gcc-14-riscv`**; the other two — including the clang/LLVM one — aren't wired in yet. So everything we pull is a GCC-14 kernel.
 
 The code is layered, three layers from the outside in:
 
-- **upper layer**: entry points and viewers — twelve CLI scripts + the web GUI + the worker, all "selectors or viewers";
+- **upper layer**: entry points and viewers — ten CLI scripts, the web GUI, and the worker (twelve entry points in all), every one of them a "selector or a viewer";
 - **middle layer**: `lib/` — data structures + the execution engine, running the "pick a build → make it local → run a job → get a verdict" flow;
 - **lower layer**: the outside world — KernelCI's HTTP API, tuxrun/QEMU, the local filesystem.
 
@@ -81,7 +81,7 @@ On top of that structure sit three entry points:
 
 Those three can be split further: the **CLI** and the **web** are the "normal", human-facing entry points, the ones the SOW actually names as deliverables; the **worker** is more like the hired help — it isn't an SOW deliverable, just the layer that keeps "runs every day" going without anyone watching. It talks to tasks dispatched from upstream, and right now it hasn't gotten the token yet, so it isn't actually connected.
 
-The finer details are in `RUNBOOK.md`; not repeating them here.
+The finer details are in `docs/RUNBOOK.md`; not repeating them here.
 
 **Demo** — a short demo walks through both of those entry points. The GUI side: pulling build resources, running, viewing results (logs at the GUI's `/runs/<id>/log` — this page didn't make it into the recording, so the address is spelled out here), viewing configuration drift (not necessarily of the run builds — the earlier builds aren't pulled), and regression analysis (unlike the CLI's, this analyzes the local ledger). The CLI side: a few `table.py` features like viewing `todo` and `index-pull` (this shows the post-pull result, so there are many entries — the previous ones get counted in, and these are only the cards that were pulled), plus a simple run, config drift, and regression analysis. One honest note: the demo has no audio or subtitles, the editing is rough, and it's just a simple walkthrough — the coverage isn't comprehensive.
 

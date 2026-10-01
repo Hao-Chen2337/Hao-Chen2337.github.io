@@ -108,7 +108,7 @@
         <h3>Phase 3 · Upstream integration</h3>
         <p>The SOW asks for a formal PR to the mainline KernelCI parent codebase, integrating the RISC-V test profile suite.</p>
         <ul>
-          <li>Test profile suite → <a href="https://github.com/kernelci/kernelci-pipeline/pull/1599">kernelci/kernelci-pipeline#1599</a>; RISC-V kselftest backend → <a href="https://github.com/kernelci/tuxlava/pull/50">kernelci/tuxlava#50</a>. <code>kernelci-pipeline</code>.</li>
+          <li>Test profile suite → <a href="https://github.com/kernelci/kernelci-pipeline/pull/1599">kernelci/kernelci-pipeline#1599</a>, merged; RISC-V kselftest backend → <a href="https://github.com/kernelci/tuxlava/pull/50">kernelci/tuxlava#50</a>, merged.</li>
         </ul>
         <h3>Phase 4 · Documentation &amp; demo</h3>
         <p>The SOW asks for: a comprehensive test-execution runbook; a technical blog post + demo; LF badges.</p>
@@ -118,10 +118,10 @@
         </ul>
         <h2>How the project is put together</h2>
         <p><strong>What we test with — we don't build our own; we take what's ready on the official site.</strong> The kernel isn't something we compile ourselves. On the KernelCI site, every new commit gets built by someone else; artifacts live on <code>storage.kernelci.org</code>, metadata on <code>api.kernelci.org</code>. What we do is not build another build system, but <strong>read these builds off the official API</strong> — download, filter, run, record.</p>
-        <p><strong>The RISC-V build stream actually has three jobs</strong> — <code>kbuild-gcc-14-riscv</code>, its SMP variant <code>kbuild-gcc-14-riscv-smp</code>, and a clang one, <code>kbuild-clang-21-riscv-smp</code> (clang-21, also the SMP variant). <strong>This project currently only hooks up <code>kbuild-gcc-14-riscv</code></strong>; the other two — including the clang/LLVM one — aren't wired in yet. So everything we pull is a GCC-14 kernel.</p>
+        <p><strong>Upstream defines a dozen RISC-V kbuild jobs; three were in scope here</strong> — <code>kbuild-gcc-14-riscv</code>, <code>kbuild-gcc-14-riscv-smp</code>, and a clang one, <code>kbuild-clang-21-riscv-smp</code>. (The <code>-smp</code> in those names is upstream's, and it reads backwards: both jobs add the fragment <code>CONFIG_SMP=n</code>, so they are the uniprocessor builds.) <strong>This project currently only hooks up <code>kbuild-gcc-14-riscv</code></strong>; the other two — including the clang/LLVM one — aren't wired in yet. So everything we pull is a GCC-14 kernel.</p>
         <p>The code is layered, three layers from the outside in:</p>
         <ul>
-          <li><strong>upper layer</strong>: entry points and viewers — twelve CLI scripts + the web GUI + the worker, all "selectors or viewers";</li>
+          <li><strong>upper layer</strong>: entry points and viewers — ten CLI scripts, the web GUI, and the worker (twelve entry points in all), every one of them a "selector or a viewer";</li>
           <li><strong>middle layer</strong>: <code>lib/</code> — data structures + the execution engine, running the "pick a build → make it local → run a job → get a verdict" flow;</li>
           <li><strong>lower layer</strong>: the outside world — KernelCI's HTTP API, tuxrun/QEMU, the local filesystem.</li>
         </ul>
@@ -138,7 +138,7 @@
           <li><strong>worker (resident)</strong> — <code>pull_worker.py</code> polls the production API for jobs, claims, runs, and reports back; it's the never-stopping entry point behind "runs every day".</li>
         </ul>
         <p>Those three can be split further: the <strong>CLI</strong> and the <strong>web</strong> are the "normal", human-facing entry points, the ones the SOW actually names as deliverables; the <strong>worker</strong> is more like the hired help — it isn't an SOW deliverable, just the layer that keeps "runs every day" going without anyone watching. It talks to tasks dispatched from upstream, and right now it hasn't gotten the token yet, so it isn't actually connected.</p>
-        <p>The finer details are in <code>RUNBOOK.md</code>; not repeating them here.</p>
+        <p>The finer details are in <code>docs/RUNBOOK.md</code>; not repeating them here.</p>
         <p><strong>Demo</strong> — a short demo walks through both of those entry points. The GUI side: pulling build resources, running, viewing results (logs at the GUI's <code>/runs/&lt;id&gt;/log</code> — this page didn't make it into the recording, so the address is spelled out here), viewing configuration drift (not necessarily of the run builds — the earlier builds aren't pulled), and regression analysis (unlike the CLI's, this analyzes the local ledger). The CLI side: a few <code>table.py</code> features like viewing <code>todo</code> and <code>index-pull</code> (this shows the post-pull result, so there are many entries — the previous ones get counted in, and these are only the cards that were pulled), plus a simple run, config drift, and regression analysis. One honest note: the demo has no audio or subtitles, the editing is rough, and it's just a simple walkthrough — the coverage isn't comprehensive.</p>
         <video controls src="de.mp4" style="max-width:100%;border-radius:8px"></video>
         <h2>What's still missing — back to the SOW, item by item</h2>
